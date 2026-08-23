@@ -1,0 +1,5 @@
+numpy>=1.26,<3
+pandas>=2.2,<3
+Pillow>=10.0
+pydicom>=3.0
+ImageHash>=4.3
