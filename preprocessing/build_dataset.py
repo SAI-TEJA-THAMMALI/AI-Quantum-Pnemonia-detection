@@ -58,7 +58,17 @@ def find_kermany_images():
             ".jpeg",
             ".png",
             ".bmp",
+            ".tif",
+            ".tiff",
         }:
+            continue
+
+        # Ignore macOS metadata directories.
+        if "__MACOSX" in image_path.parts:
+            continue
+
+        # Ignore AppleDouble metadata files.
+        if image_path.name.startswith("._"):
             continue
 
         class_name = (
@@ -71,13 +81,22 @@ def find_kermany_images():
         }:
             continue
 
+        # Standardize Kermany NORMAL
+        # to the project's final negative class.
+        final_label = (
+            "NON_PNEUMONIA"
+            if class_name == "NORMAL"
+            else "PNEUMONIA"
+        )
+
         records.append(
             {
                 "path": str(
                     image_path.resolve()
                 ),
-                "label": class_name,
+                "label": final_label,
                 "source": "KERMANY",
+                "original_label": class_name,
             }
         )
 
@@ -98,18 +117,15 @@ def find_rsna_images():
 
     records = []
 
-    for image_path in RSNA_SELECTED_DIR.rglob(
-        "*.png"
-    ):
+    for image_path in RSNA_SELECTED_DIR.rglob("*.png"):
+
+        if not image_path.is_file():
+            continue
 
         class_name = (
             image_path.parent.name.upper()
         )
 
-        # IMPORTANT:
-        # Keep RSNA's negative class separate
-        # until we explicitly decide how it
-        # maps to the final classifier.
         if class_name not in {
             "NON_PNEUMONIA",
             "PNEUMONIA",
@@ -123,11 +139,11 @@ def find_rsna_images():
                 ),
                 "label": class_name,
                 "source": "RSNA",
+                "original_label": class_name,
             }
         )
 
     return pd.DataFrame(records)
-
 
 # --------------------------------------------------
 # Create Dataset A

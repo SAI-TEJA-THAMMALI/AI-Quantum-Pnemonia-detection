@@ -73,55 +73,49 @@ def load_labels() -> pd.DataFrame:
 # Convert RSNA labels to patient-level labels
 # --------------------------------------------------
 
-def create_patient_labels(
+def create_image_labels(
     df: pd.DataFrame,
 ) -> pd.DataFrame:
     """
-    Convert image-level RSNA annotations
-    into one label per patient.
+    Convert RSNA annotation rows into one label per image.
 
-    If any annotation for a patient has
-    Target=1, the patient is classified
-    as Pneumonia.
+    Each patientId corresponds to one RSNA chest X-ray image.
 
-    Otherwise the patient is classified
-    as Non-Pneumonia.
+    If an image has one or more Target=1 annotations,
+    the image is classified as PNEUMONIA.
+
+    Otherwise it is classified as NON_PNEUMONIA.
     """
 
-    patient_labels = (
-        df.groupby("patientId")["Target"]
+    image_labels = (
+        df.groupby("patientId", as_index=False)["Target"]
         .max()
-        .reset_index()
     )
 
-    patient_labels["label"] = (
-        patient_labels["Target"]
-        .map(
-            {
-                0: "NON_PNEUMONIA",
-                1: "PNEUMONIA",
-            }
-        )
+    image_labels["label"] = image_labels["Target"].map(
+        {
+            0: "NON_PNEUMONIA",
+            1: "PNEUMONIA",
+        }
     )
 
-    return patient_labels
-
+    return image_labels
 
 # --------------------------------------------------
 # Select balanced subset
 # --------------------------------------------------
 
 def select_subset(
-    patient_labels: pd.DataFrame,
+    image_labels: pd.DataFrame,
 ) -> pd.DataFrame:
 
-    pneumonia = patient_labels[
-        patient_labels["label"]
+    pneumonia = image_labels[
+        image_labels["label"]
         == "PNEUMONIA"
     ]
 
-    non_pneumonia = patient_labels[
-        patient_labels["label"]
+    non_pneumonia = image_labels[
+        image_labels["label"]
         == "NON_PNEUMONIA"
     ]
 
@@ -212,17 +206,53 @@ def select_rsna_subset():
         f"\nTotal annotation rows: {len(df)}"
     )
 
-    patient_labels = (
-        create_patient_labels(df)
-    )
+    image_labels = create_image_labels(df)
 
     print(
-        f"Unique patients: "
-        f"{len(patient_labels)}"
+        f"Unique images: "
+        f"{len(image_labels)}"
     )
 
     selected = select_subset(
-        patient_labels
+        image_labels
+    )
+
+    save_selection(selected)
+
+    print("\nSelected dataset:")
+    print(
+        selected["label"]
+        .value_counts()
+    )
+
+    print(
+        f"\nTotal selected: "
+        f"{len(selected)}"
+    )
+
+    return selected
+
+    print("=" * 60)
+    print("RSNA SUBSET SELECTION")
+    print("=" * 60)
+
+    df = load_labels()
+
+    print(
+        f"\nTotal annotation rows: {len(df)}"
+    )
+
+    image_labels = (
+        create_image_labels(df)
+    )
+
+    print(
+        f"Unique images: "
+        f"{len(image_labels)}"
+    )
+
+    selected = select_subset(
+        image_labels
     )
 
     save_selection(selected)

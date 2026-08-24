@@ -36,8 +36,7 @@ OUTPUT_DIR = (
 # Read selected patients
 # --------------------------------------------------
 
-def load_selected_patients():
-
+def load_selected_images():
     if not SELECTION_FILE.exists():
         raise FileNotFoundError(
             f"Selection file not found:\n"
@@ -118,7 +117,7 @@ def read_dicom(dicom_path: Path) -> Image.Image:
 # Convert one patient
 # --------------------------------------------------
 
-def convert_patient(
+def convert_image(
     patient_id: str,
     label: str,
 ):
@@ -150,6 +149,8 @@ def convert_patient(
         output_dir
         / f"rsna_{patient_id}.png"
     )
+    if output_path.exists():
+        return output_path
 
     image.save(
         output_path,
@@ -169,10 +170,10 @@ def convert_selected_rsna():
     print("RSNA DICOM → PNG CONVERSION")
     print("=" * 60)
 
-    selected = load_selected_patients()
+    selected = load_selected_images()
 
     print(
-        f"\nSelected patients: "
+        f"\nSelected images: "
         f"{len(selected)}"
     )
 
@@ -191,7 +192,7 @@ def convert_selected_rsna():
 
         try:
 
-            output_path = convert_patient(
+            output_path = convert_image(
                 patient_id,
                 label,
             )
@@ -279,6 +280,23 @@ def convert_selected_rsna():
     print(
         f"Failed:     {len(failed)}"
     )
+    print("\nOutput class distribution:")
+
+    for label in [
+        "NON_PNEUMONIA",
+        "PNEUMONIA",
+    ]:
+        label_dir = OUTPUT_DIR / label
+
+        count = (
+            len(list(label_dir.glob("*.png")))
+            if label_dir.exists()
+            else 0
+        )
+
+        print(
+            f"  {label}: {count}"
+        )
 
     print(
         f"\nOutput directory:\n"

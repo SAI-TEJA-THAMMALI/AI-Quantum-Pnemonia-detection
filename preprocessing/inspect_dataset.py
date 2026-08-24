@@ -49,15 +49,8 @@ VALID_SPLITS = {
 # KERMANY IMAGE DISCOVERY
 # ============================================================
 
-def find_kermany_images():
-    """
-    Find all image files in the Kermany dataset.
 
-    Returns a list of dictionaries containing:
-        path
-        split
-        original_label
-    """
+def find_kermany_images():
 
     if not KERMANY_DIR.exists():
         print(
@@ -68,37 +61,36 @@ def find_kermany_images():
 
     records = []
 
+    ignored_macos = 0
+
     for image_path in KERMANY_DIR.rglob("*"):
 
         if not image_path.is_file():
             continue
 
-        if (
-            image_path.suffix.lower()
-            not in SUPPORTED_IMAGE_EXTENSIONS
-        ):
+        if "__MACOSX" in image_path.parts:
+            ignored_macos += 1
             continue
 
-        # Find NORMAL/PNEUMONIA in parent hierarchy
+        if image_path.name.startswith("._"):
+            ignored_macos += 1
+            continue
+
+        if not is_valid_image_candidate(image_path):
+            continue
+
         label = None
 
         for parent in image_path.parents:
-
-            parent_name = parent.name.upper()
-
-            if parent_name in VALID_KERMANY_CLASSES:
-                label = parent_name
+            if parent.name.upper() in VALID_KERMANY_CLASSES:
+                label = parent.name.upper()
                 break
 
-        # Find train/val/test in parent hierarchy
         split = None
 
         for parent in image_path.parents:
-
-            parent_name = parent.name.lower()
-
-            if parent_name in VALID_SPLITS:
-                split = parent_name
+            if parent.name.lower() in VALID_SPLITS:
+                split = parent.name.lower()
                 break
 
         records.append(
@@ -109,12 +101,14 @@ def find_kermany_images():
             }
         )
 
-    return records
+    print(f"\nIgnored macOS metadata files: {ignored_macos}")
 
+    return records
 
 # ============================================================
 # KERMANY INSPECTION
 # ============================================================
+
 
 def inspect_kermany():
 
@@ -126,7 +120,6 @@ def inspect_kermany():
     records = find_kermany_images()
 
     if not records:
-
         print("No Kermany images found.")
         return {
             "records": [],
@@ -134,9 +127,7 @@ def inspect_kermany():
             "corrupted": [],
         }
 
-    print(
-        f"\nTotal image files found: {len(records)}"
-    )
+    print(f"\nTotal image files found: {len(records)}")
 
     split_counts = Counter()
     class_counts = Counter()
@@ -153,7 +144,6 @@ def inspect_kermany():
     # --------------------------------------------------------
 
     for record in records:
-
         image_path = record["path"]
 
         split = record["split"]
@@ -173,31 +163,21 @@ def inspect_kermany():
             unknown_class.append(image_path)
 
         if split is not None and label is not None:
-            split_class_counts[
-                (split, label)
-            ] += 1
+            split_class_counts[(split, label)] += 1
 
-        format_counts[
-            image_path.suffix.lower()
-        ] += 1
+        format_counts[image_path.suffix.lower()] += 1
 
         # Image validation
         try:
-
             with Image.open(image_path) as image:
-
                 image.verify()
 
             with Image.open(image_path) as image:
-
                 image.load()
 
-                size_counts[
-                    image.size
-                ] += 1
+                size_counts[image.size] += 1
 
         except Exception as error:
-
             corrupted.append(
                 {
                     "path": image_path,
@@ -216,11 +196,7 @@ def inspect_kermany():
         "val",
         "test",
     ]:
-
-        print(
-            f"  {split.upper():5}: "
-            f"{split_counts.get(split, 0)}"
-        )
+        print(f"  {split.upper():5}: {split_counts.get(split, 0)}")
 
     # --------------------------------------------------------
     # Print overall class distribution
@@ -228,15 +204,9 @@ def inspect_kermany():
 
     print("\nOverall class distribution:")
 
-    print(
-        f"  NORMAL:    "
-        f"{class_counts.get('NORMAL', 0)}"
-    )
+    print(f"  NORMAL:    {class_counts.get('NORMAL', 0)}")
 
-    print(
-        f"  PNEUMONIA: "
-        f"{class_counts.get('PNEUMONIA', 0)}"
-    )
+    print(f"  PNEUMONIA: {class_counts.get('PNEUMONIA', 0)}")
 
     # --------------------------------------------------------
     # Print split + class
@@ -249,18 +219,11 @@ def inspect_kermany():
         "val",
         "test",
     ]:
-
         print(f"\n  {split.upper()}")
 
-        print(
-            f"    NORMAL:    "
-            f"{split_class_counts.get((split, 'NORMAL'), 0)}"
-        )
+        print(f"    NORMAL:    {split_class_counts.get((split, 'NORMAL'), 0)}")
 
-        print(
-            f"    PNEUMONIA: "
-            f"{split_class_counts.get((split, 'PNEUMONIA'), 0)}"
-        )
+        print(f"    PNEUMONIA: {split_class_counts.get((split, 'PNEUMONIA'), 0)}")
 
     # --------------------------------------------------------
     # Formats
@@ -268,67 +231,39 @@ def inspect_kermany():
 
     print("\nImage formats:")
 
-    for extension, count in sorted(
-        format_counts.items()
-    ):
-
-        print(
-            f"  {extension}: {count}"
-        )
+    for extension, count in sorted(format_counts.items()):
+        print(f"  {extension}: {count}")
 
     # --------------------------------------------------------
     # Dimensions
     # --------------------------------------------------------
 
-    print(
-        "\nMost common image dimensions:"
-    )
+    print("\nMost common image dimensions:")
 
     for size, count in size_counts.most_common(10):
-
-        print(
-            f"  {size[0]} x {size[1]}: "
-            f"{count}"
-        )
+        print(f"  {size[0]} x {size[1]}: {count}")
 
     # --------------------------------------------------------
     # Corrupted images
     # --------------------------------------------------------
 
-    print(
-        f"\nCorrupted/unreadable images: "
-        f"{len(corrupted)}"
-    )
+    print(f"\nCorrupted/unreadable images: {len(corrupted)}")
 
     if corrupted:
-
-        print(
-            "\nFirst 10 corrupted files:"
-        )
+        print("\nFirst 10 corrupted files:")
 
         for item in corrupted[:10]:
+            print(f"  {item['path']}")
 
-            print(
-                f"  {item['path']}"
-            )
-
-            print(
-                f"    Error: {item['error']}"
-            )
+            print(f"    Error: {item['error']}")
 
     # --------------------------------------------------------
     # Unknown structure
     # --------------------------------------------------------
 
-    print(
-        f"\nImages with unknown split: "
-        f"{len(unknown_split)}"
-    )
+    print(f"\nImages with unknown split: {len(unknown_split)}")
 
-    print(
-        f"Images with unknown class: "
-        f"{len(unknown_class)}"
-    )
+    print(f"Images with unknown class: {len(unknown_class)}")
 
     return {
         "records": records,
@@ -346,6 +281,7 @@ def inspect_kermany():
 # RSNA INSPECTION
 # ============================================================
 
+
 def inspect_rsna():
 
     print("\n")
@@ -354,11 +290,7 @@ def inspect_rsna():
     print("=" * 70)
 
     if not RSNA_DIR.exists():
-
-        print(
-            f"[WARNING] RSNA directory does not exist:\n"
-            f"          {RSNA_DIR}"
-        )
+        print(f"[WARNING] RSNA directory does not exist:\n          {RSNA_DIR}")
 
         return {
             "dicom_count": 0,
@@ -369,37 +301,23 @@ def inspect_rsna():
     # DICOM files
     # --------------------------------------------------------
 
-    dicom_files = list(
-        RSNA_DIR.rglob("*.dcm")
-    )
+    dicom_files = list(RSNA_DIR.rglob("*.dcm"))
 
-    print(
-        f"\nDICOM files found: "
-        f"{len(dicom_files)}"
-    )
+    print(f"\nDICOM files found: {len(dicom_files)}")
 
     # --------------------------------------------------------
     # CSV files
     # --------------------------------------------------------
 
-    csv_files = list(
-        RSNA_DIR.rglob("*.csv")
-    )
+    csv_files = list(RSNA_DIR.rglob("*.csv"))
 
-    print(
-        f"CSV files found: "
-        f"{len(csv_files)}"
-    )
+    print(f"CSV files found: {len(csv_files)}")
 
     if csv_files:
-
         print("\nCSV files:")
 
         for csv_file in csv_files:
-
-            print(
-                f"  {csv_file.relative_to(RSNA_DIR)}"
-            )
+            print(f"  {csv_file.relative_to(RSNA_DIR)}")
 
     # --------------------------------------------------------
     # Find label CSV
@@ -408,22 +326,15 @@ def inspect_rsna():
     label_file = None
 
     for csv_file in csv_files:
-
         if (
             "label" in csv_file.name.lower()
-            or "stage_2_train_labels"
-            in csv_file.name.lower()
+            or "stage_2_train_labels" in csv_file.name.lower()
         ):
-
             label_file = csv_file
             break
 
     if label_file is None:
-
-        print(
-            "\n[WARNING] Could not identify "
-            "the RSNA label CSV."
-        )
+        print("\n[WARNING] Could not identify the RSNA label CSV.")
 
         return {
             "dicom_count": len(dicom_files),
@@ -435,42 +346,24 @@ def inspect_rsna():
     # --------------------------------------------------------
 
     try:
-
-        df = pd.read_csv(
-            label_file
-        )
+        df = pd.read_csv(label_file)
 
     except Exception as error:
-
-        print(
-            f"\n[ERROR] Could not read "
-            f"RSNA CSV:\n{error}"
-        )
+        print(f"\n[ERROR] Could not read RSNA CSV:\n{error}")
 
         return {
             "dicom_count": len(dicom_files),
             "csv_files": csv_files,
         }
 
-    print(
-        f"\nLabel file:"
-        f"\n  {label_file.name}"
-    )
+    print(f"\nLabel file:\n  {label_file.name}")
 
-    print(
-        f"\nLabel rows: "
-        f"{len(df)}"
-    )
+    print(f"\nLabel rows: {len(df)}")
 
-    print(
-        f"CSV columns:"
-    )
+    print(f"CSV columns:")
 
     for column in df.columns:
-
-        print(
-            f"  {column}"
-        )
+        print(f"  {column}")
 
     # --------------------------------------------------------
     # Required columns
@@ -481,17 +374,10 @@ def inspect_rsna():
         "Target",
     }
 
-    missing_columns = (
-        required_columns
-        - set(df.columns)
-    )
+    missing_columns = required_columns - set(df.columns)
 
     if missing_columns:
-
-        print(
-            "\n[WARNING] Missing expected "
-            f"columns: {sorted(missing_columns)}"
-        )
+        print(f"\n[WARNING] Missing expected columns: {sorted(missing_columns)}")
 
         return {
             "dicom_count": len(dicom_files),
@@ -502,66 +388,33 @@ def inspect_rsna():
     # Patient count
     # --------------------------------------------------------
 
-    unique_patients = (
-        df["patientId"]
-        .nunique()
-    )
+    unique_patients = df["patientId"].nunique()
 
-    print(
-        f"\nUnique patients: "
-        f"{unique_patients}"
-    )
+    print(f"\nUnique patients: {unique_patients}")
 
     # --------------------------------------------------------
     # Target distribution
     # --------------------------------------------------------
 
-    target_counts = (
-        df["Target"]
-        .value_counts()
-        .sort_index()
-    )
+    target_counts = df["Target"].value_counts().sort_index()
 
-    print(
-        "\nTarget distribution:"
-    )
+    print("\nTarget distribution:")
 
-    for target, count in (
-        target_counts.items()
-    ):
-
-        print(
-            f"  Target {target}: "
-            f"{count}"
-        )
+    for target, count in target_counts.items():
+        print(f"  Target {target}: {count}")
 
     # --------------------------------------------------------
     # Patient-level target distribution
     # --------------------------------------------------------
 
-    patient_targets = (
-        df.groupby("patientId")["Target"]
-        .max()
-    )
+    patient_targets = df.groupby("patientId")["Target"].max()
 
-    patient_target_counts = (
-        patient_targets
-        .value_counts()
-        .sort_index()
-    )
+    patient_target_counts = patient_targets.value_counts().sort_index()
 
-    print(
-        "\nPatient-level target distribution:"
-    )
+    print("\nPatient-level target distribution:")
 
-    for target, count in (
-        patient_target_counts.items()
-    ):
-
-        print(
-            f"  Target {target}: "
-            f"{count}"
-        )
+    for target, count in patient_target_counts.items():
+        print(f"  Target {target}: {count}")
 
     return {
         "dicom_count": len(dicom_files),
@@ -570,15 +423,14 @@ def inspect_rsna():
         "label_rows": len(df),
         "unique_patients": unique_patients,
         "target_counts": target_counts,
-        "patient_target_counts": (
-            patient_target_counts
-        ),
+        "patient_target_counts": (patient_target_counts),
     }
 
 
 # ============================================================
 # SAVE REPORT
 # ============================================================
+
 
 def save_report(
     kermany_result,
@@ -594,140 +446,102 @@ def save_report(
         "w",
         encoding="utf-8",
     ) as file:
+        file.write("PNEUMONIA DATASET INSPECTION REPORT\n")
 
-        file.write(
-            "PNEUMONIA DATASET INSPECTION REPORT\n"
-        )
-
-        file.write(
-            "=" * 70 + "\n\n"
-        )
+        file.write("=" * 70 + "\n\n")
 
         # ----------------------------------------------------
         # Kermany
         # ----------------------------------------------------
 
-        file.write(
-            "KERMANY DATASET\n"
-        )
+        file.write("KERMANY DATASET\n")
 
-        file.write(
-            "-" * 50 + "\n"
-        )
+        file.write("-" * 50 + "\n")
 
-        file.write(
-            f"Total images: "
-            f"{kermany_result['total']}\n\n"
-        )
+        file.write(f"Total images: {kermany_result['total']}\n\n")
 
-        file.write(
-            "Split distribution:\n"
-        )
+        file.write("Split distribution:\n")
 
         for split in [
             "train",
             "val",
             "test",
         ]:
+            file.write(f"  {split}: {kermany_result['split_counts'].get(split, 0)}\n")
 
-            file.write(
-                f"  {split}: "
-                f"{kermany_result['split_counts'].get(split, 0)}\n"
-            )
-
-        file.write(
-            "\nClass distribution:\n"
-        )
+        file.write("\nClass distribution:\n")
 
         for label in [
             "NORMAL",
             "PNEUMONIA",
         ]:
+            file.write(f"  {label}: {kermany_result['class_counts'].get(label, 0)}\n")
 
-            file.write(
-                f"  {label}: "
-                f"{kermany_result['class_counts'].get(label, 0)}\n"
-            )
-
-        file.write(
-            "\nSplit/class distribution:\n"
-        )
+        file.write("\nSplit/class distribution:\n")
 
         for split in [
             "train",
             "val",
             "test",
         ]:
-
-            file.write(
-                f"\n  {split.upper()}\n"
-            )
+            file.write(f"\n  {split.upper()}\n")
 
             for label in [
                 "NORMAL",
                 "PNEUMONIA",
             ]:
-
                 file.write(
                     f"    {label}: "
                     f"{kermany_result['split_class_counts'].get((split, label), 0)}\n"
                 )
 
-        file.write(
-            f"\nCorrupted images: "
-            f"{len(kermany_result['corrupted'])}\n"
-        )
+        file.write(f"\nCorrupted images: {len(kermany_result['corrupted'])}\n")
 
-        file.write(
-            f"Unknown split: "
-            f"{len(kermany_result['unknown_split'])}\n"
-        )
+        file.write(f"Unknown split: {len(kermany_result['unknown_split'])}\n")
 
-        file.write(
-            f"Unknown class: "
-            f"{len(kermany_result['unknown_class'])}\n"
-        )
+        file.write(f"Unknown class: {len(kermany_result['unknown_class'])}\n")
 
         # ----------------------------------------------------
         # RSNA
         # ----------------------------------------------------
 
-        file.write(
-            "\n\nRSNA DATASET\n"
-        )
+        file.write("\n\nRSNA DATASET\n")
 
-        file.write(
-            "-" * 50 + "\n"
-        )
+        file.write("-" * 50 + "\n")
 
-        file.write(
-            f"DICOM files: "
-            f"{rsna_result.get('dicom_count', 0)}\n"
-        )
+        file.write(f"DICOM files: {rsna_result.get('dicom_count', 0)}\n")
 
-        file.write(
-            f"Label rows: "
-            f"{rsna_result.get('label_rows', 0)}\n"
-        )
+        file.write(f"Label rows: {rsna_result.get('label_rows', 0)}\n")
 
-        file.write(
-            f"Unique patients: "
-            f"{rsna_result.get('unique_patients', 0)}\n"
-        )
+        file.write(f"Unique patients: {rsna_result.get('unique_patients', 0)}\n")
 
-        file.write(
-            "\nInspection complete.\n"
-        )
+        file.write("\nInspection complete.\n")
 
-    print(
-        f"\nInspection report saved to:\n"
-        f"{REPORT_FILE}"
-    )
+    print(f"\nInspection report saved to:\n{REPORT_FILE}")
+
+
+def is_valid_image_candidate(path: Path) -> bool:
+    """Return True only for actual image candidates."""
+    if not path.is_file():
+        return False
+
+    if path.suffix.lower() not in SUPPORTED_IMAGE_EXTENSIONS:
+        return False
+
+    # Ignore macOS metadata
+    if "__MACOSX" in path.parts:
+        return False
+
+    # Ignore AppleDouble files such as ._IM-0001.jpeg
+    if path.name.startswith("._"):
+        return False
+    return True
 
 
 # ============================================================
 # MAIN
 # ============================================================
+
 
 def main():
 
@@ -736,18 +550,11 @@ def main():
     print("        PNEUMONIA DATASET INSPECTION")
     print("=" * 70)
 
-    print(
-        f"\nProject root:\n"
-        f"{PROJECT_ROOT}"
-    )
+    print(f"\nProject root:\n{PROJECT_ROOT}")
 
-    kermany_result = (
-        inspect_kermany()
-    )
+    kermany_result = inspect_kermany()
 
-    rsna_result = (
-        inspect_rsna()
-    )
+    rsna_result = inspect_rsna()
 
     save_report(
         kermany_result,

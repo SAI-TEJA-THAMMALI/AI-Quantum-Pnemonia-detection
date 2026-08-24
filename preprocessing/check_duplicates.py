@@ -1,5 +1,5 @@
 from pathlib import Path
-from collections import defaultdict
+from collections import Counter, defaultdict
 
 import imagehash
 from PIL import Image
@@ -15,8 +15,95 @@ SUPPORTED_EXTENSIONS = {
 }
 
 
+def get_dataset_metadata(image_path: Path) -> tuple[str | None, str | None]:
+    """
+    Extract split and class from a Kermany image path.
+    """
+
+    valid_splits = {"train", "val", "test"}
+    valid_classes = {"NORMAL", "PNEUMONIA"}
+
+    split = None
+    label = None
+
+    for parent in image_path.parents:
+
+        name = parent.name
+
+        if name.lower() in valid_splits:
+            split = name.lower()
+
+        if name.upper() in valid_classes:
+            label = name.upper()
+
+    return split, label
+
+def analyze_duplicate_groups(duplicate_groups: list[list[Path]]) -> dict:
+    """
+    Analyze duplicate groups by split and class.
+    """
+
+    cross_split_groups = []
+    cross_class_groups = []
+
+    split_distribution = Counter()
+    class_distribution = Counter()
+
+    for index, group in enumerate(
+        duplicate_groups,
+        start=1,
+    ):
+
+        splits = set()
+        classes = set()
+
+        for image_path in group:
+
+            split, label = get_dataset_metadata(image_path)
+
+            if split is not None:
+                splits.add(split)
+
+            if label is not None:
+                classes.add(label)
+
+        split_key = tuple(sorted(splits))
+        class_key = tuple(sorted(classes))
+
+        split_distribution[split_key] += 1
+        class_distribution[class_key] += 1
+
+        if len(splits) > 1:
+
+            cross_split_groups.append(
+                {
+                    "group_number": index,
+                    "paths": group,
+                    "splits": splits,
+                    "classes": classes,
+                }
+            )
+
+        if len(classes) > 1:
+
+            cross_class_groups.append(
+                {
+                    "group_number": index,
+                    "paths": group,
+                    "splits": splits,
+                    "classes": classes,
+                }
+            )
+
+    return {
+        "cross_split_groups": cross_split_groups,
+        "cross_class_groups": cross_class_groups,
+        "split_distribution": split_distribution,
+        "class_distribution": class_distribution,
+    }
+
 def find_images(dataset_dir: Path) -> list[Path]:
-    """Find all supported image files."""
+    """Find valid image files, excluding macOS metadata."""
 
     if not dataset_dir.exists():
         raise FileNotFoundError(
@@ -28,6 +115,8 @@ def find_images(dataset_dir: Path) -> list[Path]:
         for path in dataset_dir.rglob("*")
         if path.is_file()
         and path.suffix.lower() in SUPPORTED_EXTENSIONS
+        and "__MACOSX" not in path.parts
+        and not path.name.startswith("._")
     )
 
 
@@ -46,16 +135,12 @@ def calculate_hash(
 
 def find_duplicates(
     dataset_dir: Path,
-    max_distance: int = 0,
 ) -> dict:
     """
-    Find duplicate or near-duplicate images.
+    Find images with identical perceptual hashes.
 
-    max_distance:
-        0 = exact perceptual hash match
-        1-5 = increasingly tolerant similarity
-
-    Returns a dictionary containing duplicate groups.
+    This version detects exact perceptual-hash matches.
+    Near-duplicate distance comparison can be added later.
     """
 
     image_files = find_images(dataset_dir)
@@ -81,15 +166,23 @@ def find_duplicates(
         for paths in hash_groups.values()
         if len(paths) > 1
     ]
+    
+    duplicate_analysis = analyze_duplicate_groups(
+        duplicate_groups
+    )
+    
+    duplicate_group_sizes = Counter(
+        len(group)
+        for group in duplicate_groups
+    )
 
     return {
         "total_images": len(image_files),
-        "hashed_images": (
-            len(image_files)
-            - len(failed_images)
-        ),
+        "hashed_images": len(image_files) - len(failed_images),
         "failed_images": failed_images,
         "duplicate_groups": duplicate_groups,
+        "duplicate_group_sizes": duplicate_group_sizes,
+        "duplicate_analysis": duplicate_analysis,
     }
 
 
@@ -190,3 +283,98 @@ def check_duplicates(
         )
 
     return result
+
+
+if __name__ == "__main__":
+
+    PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+    DATASET_DIR = (
+        PROJECT_ROOT
+        / "data"
+        / "raw"
+        / "kermany"
+    )
+
+    REPORT_PATH = (
+        PROJECT_ROOT
+        / "results"
+        / "logs"
+        / "duplicate_report.txt"
+    )
+
+    result = check_duplicates(
+        dataset_dir=DATASET_DIR,
+        report_path=REPORT_PATH,
+    )
+
+    print("=" * 60)
+    print("KERMANY DUPLICATE ANALYSIS")
+    print("=" * 60)
+
+    print(
+        f"\nTotal valid images: "
+        f"{result['total_images']}"
+    )
+
+    print(
+        f"Images successfully hashed: "
+        f"{result['hashed_images']}"
+    )
+
+    print(
+        f"Images that failed hashing: "
+        f"{len(result['failed_images'])}"
+    )
+
+    print(
+        f"Duplicate groups: "
+        f"{len(result['duplicate_groups'])}"
+    )
+    print("\nDuplicate group sizes:")
+
+    for size, count in sorted(
+        result["duplicate_group_sizes"].items()
+    ):
+        print(
+            f"  Groups containing {size} images: {count}"
+        )
+        
+    analysis = result["duplicate_analysis"]
+
+    print(
+        "\nDuplicate groups crossing dataset splits: "
+        f"{len(analysis['cross_split_groups'])}"
+    )
+
+    print(
+        "Duplicate groups crossing classes: "
+        f"{len(analysis['cross_class_groups'])}"
+    )
+
+    print("\nDuplicate groups by split:")
+
+    for key, count in sorted(
+        analysis["split_distribution"].items()
+    ):
+
+        print(
+            f"  {key}: {count}"
+        )
+
+    print("\nDuplicate groups by class:")
+
+    for key, count in sorted(
+        analysis["class_distribution"].items()
+    ):
+
+        print(
+            f"  {key}: {count}"
+        )
+
+    print(
+        f"\nReport saved to:\n"
+        f"{REPORT_PATH}"
+    )
+    
+    
